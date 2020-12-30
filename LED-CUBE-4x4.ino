@@ -1,10 +1,10 @@
-// #define data_pin     2  // DS     14-Pin
-// #define clk_pin      3  // SH_CP  11-Pin
-// #define latch_pin    4  // ST_CP  12-Pin
-// 5 Pin  1 slice 
-// 6 Pin  2 slice 
-// 7 Pin  3 slice 
-// 8 Pin  4 slice 
+// #define data_pin     2  // DS     14-Pin PD2
+// #define clk_pin      3  // SH_CP  11-Pin PD3
+// #define latch_pin    4  // ST_CP  12-Pin PD4
+// 5 Pin  1 slice // PD5
+// 6 Pin  2 slice // PD6
+// 7 Pin  3 slice // PD7
+// 8 Pin  4 slice // PB0
 
 const uint16_t mass[4][4]= {
   {1, 2, 4, 8},
@@ -243,4 +243,3 @@ void PrintYlitka() {
   PixelXY(2,2);
   PixelXY(2,1);
 }
-
