@@ -1,44 +1,59 @@
-// #define data_pin     2  // DS     14-Pin PD2
-// #define clk_pin      3  // SH_CP  11-Pin PD3
-// #define latch_pin    4  // ST_CP  12-Pin PD4
-// 5 Pin  1 slice // PD5
-// 6 Pin  2 slice // PD6
-// 7 Pin  3 slice // PD7
-// 8 Pin  4 slice // PB0
+/*
+  define data_pin     2  // DS     14-Pin PD2
+  define clk_pin      3  // SH_CP  11-Pin PD3
+  define latch_pin    4  // ST_CP  12-Pin PD4
+  5 Pin  4 slice // PD5
+  6 Pin  3 slice // PD6
+  7 Pin  2 slice // PD7
+  8 Pin  1 slice // PB0
+
+  Побитово выводит цифру через 74HC595
+  Но если надо выставить 0 так, чтобы не прибить остальные биты в 0,
+  нужен оператор "И", обозначающийся &. Так же к нему понадобится оператор "НЕ" - обозначается ~.
+  PORTD &= ~B01000000;
+  Отправляем байт на последнею микросхему в цепочке
+  инвертирование битов исключающим или ^
+  ShuftOut( SEG[ solder_s[i] ] ^ 0xFF );
+  Отправляем байт на вторую микросхему в цепочке
+  ShuftOut( SEG[ hold_s[i] ] ^ 0xFF );
+  Зажигает по очереди сегменты на обоих индикаторах
+  ShuftOut(NUM_SEG[i]);
+  digitalWrite(latch_pin, HIGH);
+  PORTD |= B01000000;
+*/
 
 const uint16_t mass[4][4]= {
-  {1, 2, 4, 8},
-  {16, 32, 64, 128},
   {256, 512, 1024, 2048},
   {4096, 8192, 16384, 32768},
+  {1, 2, 4, 8},
+  {16, 32, 64, 128},
 };
 
 void setup() {
 
   //2,3,4 порты настраиваем на вывод
   DDRD |= B11111100;
-  PORTD |= B11100000; // 1
+  PORTD |= B00000000; // 1
 
   //2,3,4 порты настраиваем на вывод
   DDRB |= B00011101;
-  PORTB |= B00000001; // 1
+  PORTB |= B00000000; // 1
 }
 
 void loop(){
   uint16_t i;
 while (1) {
-
   for (uint8_t i = 0; i < 8; i++) {
     PrintYlitka();
-    PrintMass();
     PrintKris();
+    PrintMass();
     PrintSlice(0);
     PrintSlice(1);
     PrintVertical(0);
     PrintVertical(1);
     PrintGorizont(0);
     PrintGorizont(1);    
-    //PrintIncrement();
+    PrintIncrement();
   }
 }}
 //End loop
@@ -46,7 +61,7 @@ while (1) {
 void ShiftOut( uint8_t value ) {
     for (uint8_t i = 0; i < 8; i++) {
       //digitalWrite(data_pin,(value & (0x80 >> i)));  //MSB
-      !!(value & (0x80 >> i)) == LOW ? PORTD |= B00000100 : PORTD &= ~B00000100;
+      !!(value & (0x80 >> i)) == LOW ? PORTD &= ~B00000100 : PORTD |= B00000100;
       //digitalWrite(clk_pin, HIGH);
       PORTD |= B00001000;
       //digitalWrite(clk_pin, LOW);
@@ -60,11 +75,10 @@ void PrintSlice(uint8_t r) {
   uint8_t i;
   r ? i = 3 : i = 0;
   const uint8_t a[3] = {32, 64, 128};
-  
     //digitalWrite(latch_pin, LOW); 4 port
     PORTD &= ~B00010000;
-    ShiftOut( 255 );
-    ShiftOut( 255 );
+    ShiftOut(255);
+    ShiftOut(255);
     //digitalWrite(latch_pin, HIGH);
     PORTD |= B00010000;
 
@@ -92,10 +106,11 @@ void PrintSlice(uint8_t r) {
 }
  
 void PrintIncrement() {
-//  PORTD |= B00100000; // 1
-  PORTD &= ~B00100000;  // 0
-  
-  for (uint16_t i = 65000; i < 65535; i++) {
+  //PORTD |= B00100000; // 1
+  //PORTD &= ~B00100000;  // 0
+  PORTB |= B00000001;
+
+  for (uint16_t i = 0; i < 65535; i++) {
     //digitalWrite(latch_pin, LOW); 4 port
     //Но если надо выставить 0 так, чтобы не прибить остальные биты в 0,
     // нужен оператор "И", обозначающийся &. Так же к нему понадобится оператор "НЕ" - обозначается ~.
@@ -103,14 +118,15 @@ void PrintIncrement() {
     
     // Отправляем байт на последнею микросхему в цепочке
     // инвертирование битов исключающим или ^
-    ShiftOut( i >> 8 );
+    ShiftOut(i);
+    ShiftOut(i >> 8);
     // Отправляем байт на вторую микросхему в цепочке
-    ShiftOut( i );
 
     //digitalWrite(latch_pin, HIGH);
     PORTD |= B00010000;
-    delay(5);
- }
+    delay(100);
+  }
+ delay(1000);
 }
 
 void PrintGorizont(uint8_t r) {
@@ -144,7 +160,6 @@ void PrintGorizont(uint8_t r) {
 }
 
 void PrintVertical(uint8_t r) {
-
     uint16_t i;
     r ? i = 34952 : i = 4369;
   
@@ -174,27 +189,33 @@ void PrintVertical(uint8_t r) {
 }
 
 void PrintKris() {
-  
+  PORTD |= B11100000; //1
+  //PORTD &= ~B00100000;  //0
+  PORTB |= B00000001;
+
     uint8_t i = 0;
-    uint16_t a[4] = {22117, 30068, 21877, 29767};
-    
+    uint16_t a[4] = {44234, 60136, 43754, 59534};
+
     while(1) {
      //digitalWrite(latch_pin, LOW); 4 port
       PORTD &= ~B00010000;
-      ShiftOut( a[i] >> 8 );
-      ShiftOut( a[i] );
+      ShiftOut(a[i]);
+      ShiftOut(a[i] >> 8);
       //digitalWrite(latch_pin, HIGH);
       PORTD |= B00010000;
+
       PORTB &= ~B00000001;
-      delay(500);
       PORTB |= B00000001; // 1
+      delay(500);
       i++;
       if (i > 3) break;
     }
+
+  PORTD &= ~B11100000;  //0
+  delay(500);
 }
 
 void PrintMass() {
-
   uint8_t i, y;
 
   for(i = 0; i < 4; i++) {
@@ -207,7 +228,7 @@ void PrintMass() {
     PORTD |= B00010000;
   
     PORTB &= ~B00000001;
-    delay(500);
+    delay(300);
     PORTB |= B00000001; // 1
   }}
 }
@@ -221,8 +242,8 @@ void PixelXY(uint8_t x, uint8_t y) {
     PORTD |= B00010000;
   
     PORTB &= ~B00000001;
-    delay(300);
     PORTB |= B00000001; // 1
+    delay(300);
 }
 
 void PrintYlitka() {
