@@ -71,38 +71,42 @@ void ShiftOut( uint8_t value ) {
 // End ShiftOut
 
 void PrintSlice(uint8_t r) {
-
   uint8_t i;
+  
   r ? i = 3 : i = 0;
-  const uint8_t a[3] = {32, 64, 128};
-    //digitalWrite(latch_pin, LOW); 4 port
-    PORTD &= ~B00010000;
-    ShiftOut(255);
-    ShiftOut(255);
-    //digitalWrite(latch_pin, HIGH);
-    PORTD |= B00010000;
+  const uint8_t a[3] = {128, 64, 32};
 
-    while(1) {
-      if (i == 3) {
-        PORTB &= ~1;
-        delay(500);
-        PORTB |= B00000001; // 1
-      } else {
-        PORTD &= ~a[i];
-        delay(500);
-        PORTD |= B11100000; // 1
-      }
+  //digitalWrite(latch_pin, LOW); 4 port
+  PORTD &= ~B00010000;
+  ShiftOut(255);
+  ShiftOut(255);
+  //digitalWrite(latch_pin, HIGH);
+  PORTD |= B00010000;
 
-      if (r) {
-        if (i == 0) break;
-      } else {
-        if (i == 3) break;
-      }
-      r ? i-- : i++;
+  while(1) {
+    if (i == 0) {
+      PORTB &= ~1;
+      PORTB |= B00000001; // 1
+    } else {
+      PORTD |= a[i-1]; // 1
     }
-   
-  PORTD |= B11100000; // 1
-  PORTB |= B00000001; // 1
+
+    delay(500);
+
+    PORTD &= ~B11100000; //0
+    PORTB &= ~B00000001; //0
+    
+    if (r) {
+      if (i == 0) break;
+    } else {
+      if (i == 3) break;
+    }
+    r ? i-- : i++;
+  }
+
+  PORTD &= ~B11100000;
+  PORTB &= ~B00000001;
+  delay(500);
 }
  
 void PrintIncrement() {
@@ -130,23 +134,21 @@ void PrintIncrement() {
 }
 
 void PrintGorizont(uint8_t r) {
-    
     uint16_t i;
     r ? i = 61440 : i = 15;
     
     while(1) {
       //digitalWrite(latch_pin, LOW); 4 port
       PORTD &= ~B00010000;
+      ShiftOut(i);
       ShiftOut( i >> 8 );
-      ShiftOut( i );
       //digitalWrite(latch_pin, HIGH);
       PORTD |= B00010000;
-      PORTD &= ~B11100000;
-      PORTB &= ~B00000001;
-      delay(500);
+
       PORTD |= B11100000; // 1
       PORTB |= B00000001; // 1
-      
+      delay(500);
+
       if (r) {
         if (i == 15) break;
       } else {
@@ -155,8 +157,9 @@ void PrintGorizont(uint8_t r) {
       r ? i = i/16 : i *= 16;
   }
   
-  PORTD |= B11100000; // 1
-  PORTB |= B00000001; // 1
+  PORTD &= ~B11100000;
+  PORTB &= ~B00000001;
+  delay(500);
 }
 
 void PrintVertical(uint8_t r) {
@@ -166,15 +169,15 @@ void PrintVertical(uint8_t r) {
       while(1) {
         //digitalWrite(latch_pin, LOW); 4 port
         PORTD &= ~B00010000;
-        ShiftOut( i >> 8 );
-        ShiftOut( i );
+        ShiftOut(i);
+        ShiftOut(i >> 8);
         //digitalWrite(latch_pin, HIGH);
         PORTD |= B00010000;
-        PORTD &= ~B11100000;
-        PORTB &= ~B00000001;
-        delay(500);
+
+
         PORTD |= B11100000; // 1
         PORTB |= B00000001; // 1
+        delay(500);
      
         if (r) {
           if (i == 4369) break;
@@ -184,8 +187,9 @@ void PrintVertical(uint8_t r) {
         r ? i = i/2 : i *= 2;
       }
    
-  PORTD |= B11100000; // 1
-  PORTB |= B00000001; // 1
+  PORTD &= ~B11100000;
+  PORTB &= ~B00000001;
+  delay(500);
 }
 
 void PrintKris() {
@@ -216,21 +220,26 @@ void PrintKris() {
 }
 
 void PrintMass() {
-  uint8_t i, y;
+  uint8_t i, y, z;
 
+  for(z = 0; z < 4; z++) {
+    if(z == 0) PORTB |= B00000001; // 1
+    if(z == 1) PORTD |= B10000000; // 1
+    if(z == 2) PORTD |= B01000000; // 1
+    if(z == 3) PORTD |= B00100000; // 1
   for(i = 0; i < 4; i++) {
   for(y = 0; y < 4; y++) {    
     //digitalWrite(latch_pin, LOW); 4 port
     PORTD &= ~B00010000;
-    ShiftOut( mass[i][y] >> 8 );
-    ShiftOut( mass[i][y] );
+    ShiftOut(mass[i][y] >> 8);
+    ShiftOut(mass[i][y]);
     //digitalWrite(latch_pin, HIGH);
     PORTD |= B00010000;
-  
-    PORTB &= ~B00000001;
-    delay(300);
-    PORTB |= B00000001; // 1
+    delay(350);
   }}
+    PORTD &= ~B11100000;
+    PORTB &= ~B00000001;
+  }
 }
 
 void PixelXY(uint8_t x, uint8_t y) {
