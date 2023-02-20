@@ -21,6 +21,45 @@
   digitalWrite(latch_pin, HIGH);
   PORTD |= B01000000;
 */
+#define F_CPU           8000000
+#define F_MCU           8000000
+
+#define BUTTON          9
+#define BUTTON_READ !bitRead(PINB, 1)
+
+#include <avr/io.h>
+#include <avr/interrupt.h>
+
+int8_t BUTTON_FLAG = 0;
+static int8_t cube_mode = 0;
+uint8_t prev_mode = 0;
+uint8_t press_count_time = 0;
+
+void(* gotoLoop) (void) = *loop;
+
+enum mode_t {
+    KRIS,
+    CUBE,
+    YLITKA,
+    MASS,
+    SLICE,
+    INV_SLICE,
+    VERTIKAL,
+    INV_VERTIKAL,
+    GORIZONT,
+    INV_GORIZONT,
+    INCREMENT
+};
+
+typedef enum
+{
+    NO_PRESS = 0x00,
+    SINGLE_PRESS = 0x01,
+    LONG_PRESS = 0x02,
+    DOUBLE_PRESS = 0x03,
+} eButtonEvent;
+
+volatile uint8_t event = NO_PRESS;
 
 const uint16_t mass[4][4]= {
   {256, 512, 1024, 2048},
@@ -29,44 +68,147 @@ const uint16_t mass[4][4]= {
   {16, 32, 64, 128},
 };
 
-void setup() {
+ISR(TIMER1_COMPA_vect)  //обработчик прерывания по совпадению 1А
+{
+  TCNT1 = 0;            //обнуляем регистр TCNT1
 
+  if(digitalRead(BUTTON) == 0 && BUTTON_FLAG == 0) {
+    BUTTON_FLAG = 1;
+  }
+
+  if(digitalRead(BUTTON) == 0 && BUTTON_FLAG == 1) {
+    press_count_time = press_count_time > 1000 ? 1000 : press_count_time + 1;
+  }
+
+  if(digitalRead(BUTTON) == 1 && BUTTON_FLAG == 1) {
+    if (press_count_time > 50) {
+      event = LONG_PRESS;
+    }
+    else if (press_count_time > 5) {
+      event = SINGLE_PRESS;
+    }
+
+    if (event != NO_PRESS) {
+    
+      if (event == LONG_PRESS) {
+        cube_mode--;
+        cube_mode = (cube_mode < 0) ? 0 : cube_mode;
+      }
+      else {
+        cube_mode++;
+        cube_mode = (cube_mode > INCREMENT) ? INCREMENT : cube_mode;
+      }
+    }
+
+    BUTTON_FLAG = 0;
+    press_count_time = 0;
+
+/*
+    asm volatile (
+      "pop r0\n"   // remove PC value from stack
+      "pop r0\n"
+      // load new PC into regs 30 and 31 (I can't remember how to reference an external C function address)
+      "push r30\n"
+      "push r31\n"
+//      "reti \n"
+    );
+
+    return loop();
+//    gotoLoop();
+*/
+  }
+}
+
+void initTimer1() {
+  TCCR1A = 0;           // настройка таймера 1, канала А
+  TCCR1B = 0;
+
+// TCCR1B |= (1<<CS11);          // CLK/8
+// TCCR1B |= (1<<CS10)|(1<<CS11); // CLK/64
+// TCCR1B |= (1<<CS12);          // CLK/256
+// TCCR1B |= (1<<CS10)|(1<<CS12); // CLK/1024
+	TCCR1B |= (1 << CS12);        // CLK/256
+	TCCR1B |= (1 << WGM12);     // CTC
+
+  OCR1A = 100;                // количество отсчетов
+  TIMSK |= (1 << OCIE1A);     // включить прерывание по совпадению таймера
+  sei();                      // разрешаем прерывания (запрещаем: cli(); )
+}
+
+void setup() {
   //2,3,4 порты настраиваем на вывод
   DDRD |= B11111100;
   PORTD |= B00000000; // 1
 
+
   //2,3,4 порты настраиваем на вывод
   DDRB |= B00011101;
   PORTB |= B00000000; // 1
+
+  pinMode(1, OUTPUT);
+  pinMode(BUTTON, INPUT_PULLUP);
+
+  initTimer1();
 }
 
-void loop(){
-  uint16_t i;
-while (1) {
-  for (uint8_t i = 0; i < 8; i++) {
-    PrintYlitka();
-    PrintKris();
-    PrintMass();
-    PrintSlice(0);
-    PrintSlice(1);
-    PrintVertical(0);
-    PrintVertical(1);
-    PrintGorizont(0);
-    PrintGorizont(1);    
-    PrintIncrement();
+void loop() {
+  clear();
+
+  if (prev_mode != cube_mode) {
+    prev_mode = cube_mode;
   }
-}}
+
+  switch(cube_mode) {
+    case KRIS:
+      PrintKris();
+      break;
+    case CUBE:
+      PrintCude();
+      break;
+    case YLITKA:
+      PrintYlitka();
+      break;
+    case MASS:
+      PrintMass();
+      break;
+    case SLICE:
+      PrintSlice(0);
+      break;
+    case INV_SLICE:
+      PrintSlice(1);
+      break;
+    case VERTIKAL:
+      PrintVertical(0);
+      break;
+    case INV_VERTIKAL:
+      PrintVertical(1);
+      break;
+    case GORIZONT:
+      PrintGorizont(0);
+      break;
+    case INV_GORIZONT:
+      PrintGorizont(1);
+      break;
+    case INCREMENT:
+      PrintIncrement();
+      break;
+  }
+}
 //End loop
 
 void ShiftOut( uint8_t value ) {
-    for (uint8_t i = 0; i < 8; i++) {
-      //digitalWrite(data_pin,(value & (0x80 >> i)));  //MSB
-      !!(value & (0x80 >> i)) == LOW ? PORTD &= ~B00000100 : PORTD |= B00000100;
-      //digitalWrite(clk_pin, HIGH);
-      PORTD |= B00001000;
-      //digitalWrite(clk_pin, LOW);
-      PORTD &= ~B00001000;
+  for (uint8_t i = 0; i < 8; i++) {
+    if (prev_mode != cube_mode) {
+      break;
     }
+
+    //digitalWrite(data_pin,(value & (0x80 >> i)));  //MSB
+    !!(value & (0x80 >> i)) == LOW ? PORTD &= ~B00000100 : PORTD |= B00000100;
+    //digitalWrite(clk_pin, HIGH);
+    PORTD |= B00001000;
+    //digitalWrite(clk_pin, LOW);
+    PORTD &= ~B00001000;
+  }
 }
 // End ShiftOut
 
@@ -84,6 +226,10 @@ void PrintSlice(uint8_t r) {
   PORTD |= B00010000;
 
   while(1) {
+    if (prev_mode != cube_mode) {
+      break;
+    }
+
     if (i == 0) {
       PORTB &= ~1;
       PORTB |= B00000001; // 1
@@ -106,12 +252,10 @@ void PrintSlice(uint8_t r) {
 
   PORTD &= ~B11100000;
   PORTB &= ~B00000001;
-  delay(500);
 }
  
 void PrintIncrement() {
-  //PORTD |= B00100000; // 1
-  //PORTD &= ~B00100000;  // 0
+  PORTD &= ~B11100000;  // 0
   PORTB |= B00000001;
 
   for (uint16_t i = 0; i < 65535; i++) {
@@ -128,38 +272,46 @@ void PrintIncrement() {
 
     //digitalWrite(latch_pin, HIGH);
     PORTD |= B00010000;
-    delay(100);
+
+    if(cube_mode != prev_mode) {
+      break;
+    }
+
+    delay(250);
   }
- delay(1000);
 }
 
 void PrintGorizont(uint8_t r) {
-    uint16_t i;
-    r ? i = 61440 : i = 15;
-    
-    while(1) {
-      //digitalWrite(latch_pin, LOW); 4 port
-      PORTD &= ~B00010000;
-      ShiftOut(i);
-      ShiftOut( i >> 8 );
-      //digitalWrite(latch_pin, HIGH);
-      PORTD |= B00010000;
+  uint16_t i;
+  r ? i = 61440 : i = 15;
+  
+  while(1) {
+    //digitalWrite(latch_pin, LOW); 4 port
+    PORTD &= ~B00010000;
+    ShiftOut(i);
+    ShiftOut( i >> 8 );
+    //digitalWrite(latch_pin, HIGH);
+    PORTD |= B00010000;
 
-      PORTD |= B11100000; // 1
-      PORTB |= B00000001; // 1
-      delay(500);
+    PORTD |= B11100000; // 1
+    PORTB |= B00000001; // 1
 
-      if (r) {
-        if (i == 15) break;
-      } else {
-        if (i == 61440) break;
-      }
-      r ? i = i/16 : i *= 16;
+    if (prev_mode != cube_mode) {
+      break;
+    }
+
+    delay(500);
+
+    if (r) {
+      if (i == 15) break;
+    } else {
+      if (i == 61440) break;
+    }
+    r ? i = i/16 : i *= 16;
   }
   
   PORTD &= ~B11100000;
   PORTB &= ~B00000001;
-  delay(500);
 }
 
 void PrintVertical(uint8_t r) {
@@ -177,6 +329,11 @@ void PrintVertical(uint8_t r) {
 
         PORTD |= B11100000; // 1
         PORTB |= B00000001; // 1
+
+        if (prev_mode != cube_mode) {
+          break;
+        }
+
         delay(500);
      
         if (r) {
@@ -189,19 +346,18 @@ void PrintVertical(uint8_t r) {
    
   PORTD &= ~B11100000;
   PORTB &= ~B00000001;
-  delay(500);
 }
 
 void PrintKris() {
-  PORTD |= B11100000; //1
-  //PORTD &= ~B00100000;  //0
+  //PORTD |= B11100000; //1
+  PORTD |= B00100000;  //0
   PORTB |= B00000001;
 
     uint8_t i = 0;
-    uint16_t a[4] = {44234, 60136, 43754, 59534};
+    uint16_t a[8] = { 44234, 61064, 43754, 59534, 58436, 43754, 44714, 19178 };
 
     while(1) {
-     //digitalWrite(latch_pin, LOW); 4 port
+      //digitalWrite(latch_pin, LOW); 4 port
       PORTD &= ~B00010000;
       ShiftOut(a[i]);
       ShiftOut(a[i] >> 8);
@@ -210,39 +366,61 @@ void PrintKris() {
 
       PORTB &= ~B00000001;
       PORTB |= B00000001; // 1
-      delay(500);
+
+      if (prev_mode != cube_mode) {
+        break;
+      }
+
+      delay(300);
       i++;
-      if (i > 3) break;
+      if (i > 8) break;
     }
 
   PORTD &= ~B11100000;  //0
-  delay(500);
 }
 
 void PrintMass() {
   uint8_t i, y, z;
 
   for(z = 0; z < 4; z++) {
+    if (prev_mode != cube_mode) {
+      break;
+    }
+
     if(z == 0) PORTB |= B00000001; // 1
     if(z == 1) PORTD |= B10000000; // 1
     if(z == 2) PORTD |= B01000000; // 1
     if(z == 3) PORTD |= B00100000; // 1
   for(i = 0; i < 4; i++) {
-  for(y = 0; y < 4; y++) {    
-    //digitalWrite(latch_pin, LOW); 4 port
-    PORTD &= ~B00010000;
-    ShiftOut(mass[i][y] >> 8);
-    ShiftOut(mass[i][y]);
-    //digitalWrite(latch_pin, HIGH);
-    PORTD |= B00010000;
-    delay(350);
-  }}
+    if (prev_mode != cube_mode) {
+      break;
+    }
+
+    for(y = 0; y < 4; y++) {
+      //digitalWrite(latch_pin, LOW); 4 port
+      PORTD &= ~B00010000;
+      ShiftOut(mass[i][y] >> 8);
+      ShiftOut(mass[i][y]);
+      //digitalWrite(latch_pin, HIGH);
+      PORTD |= B00010000;
+
+      if (prev_mode != cube_mode) {
+        break;
+      }
+
+      delay(350);
+    }
+  }
     PORTD &= ~B11100000;
     PORTB &= ~B00000001;
   }
 }
 
 void PixelXY(uint8_t x, uint8_t y) {
+    if (prev_mode != cube_mode) {
+      return;
+    }
+
     //digitalWrite(latch_pin, LOW); 4 port
     PORTD &= ~B00010000;
     ShiftOut( mass[x][y] >> 8 );
@@ -252,24 +430,113 @@ void PixelXY(uint8_t x, uint8_t y) {
   
     PORTB &= ~B00000001;
     PORTB |= B00000001; // 1
-    delay(300);
 }
 
 void PrintYlitka() {
+  PORTD |= B11100000; //1
+  PORTB |= B00000001;
+
   PixelXY(0,0);
+  if (prev_mode != cube_mode) {
+    return;
+  }
+  delay(300);
   PixelXY(0,1);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(0,2);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(0,3);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(1,3);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(2,3);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(3,3);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(3,2);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(3,1);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(3,0);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(2,0);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(1,0);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(1,1);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(1,2);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(2,2);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
   PixelXY(2,1);
+  if (prev_mode != cube_mode) {
+    return;
+  }  
+  delay(300);
+}
+
+void clear() {
+    PORTD &= ~B00010000;
+    ShiftOut(0);
+    ShiftOut(0);
+    PORTD |= B00010000;
+}
+
+void PrintCude () {
+  PORTD &= ~B00010000;
+  ShiftOut(255);
+  ShiftOut(255);
+  PORTD |= B00010000;
+
+  PORTB |= B00000001; // 1
+  PORTD |= B11100000; // 1
+
+  if (prev_mode != cube_mode) {
+    return;
+  }
+
+  delay(300);
 }
