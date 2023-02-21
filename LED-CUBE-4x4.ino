@@ -27,6 +27,10 @@
 #define BUTTON          9
 #define BUTTON_READ !bitRead(PINB, 1)
 
+#ifndef F_CPU
+  #define F_CPU 8e6
+#endif
+
 #include <avr/io.h>
 #include <avr/interrupt.h>
 
@@ -35,11 +39,16 @@ static int8_t cube_mode = 0;
 uint8_t prev_mode = 0;
 uint8_t press_count_time = 0;
 
+uint8_t counter = 0;
+uint8_t lev_ch1, lev_ch2, lev_ch3, lev_ch4;
+uint8_t buf_lev_ch1, buf_lev_ch2, buf_lev_ch3, buf_lev_ch4;
+
 void(* gotoLoop) (void) = *loop;
 
 enum mode_t {
     KRIS,
     CUBE,
+    CUBE_PWM,
     YLITKA,
     MASS,
     SLICE,
@@ -81,10 +90,10 @@ ISR(TIMER1_COMPA_vect)  //обработчик прерывания по сов�
   }
 
   if(digitalRead(BUTTON) == 1 && BUTTON_FLAG == 1) {
-    if (press_count_time > 50) {
+    if (press_count_time > 75) {
       event = LONG_PRESS;
     }
-    else if (press_count_time > 5) {
+    else if (press_count_time > 10) {
       event = SINGLE_PRESS;
     }
 
@@ -92,11 +101,11 @@ ISR(TIMER1_COMPA_vect)  //обработчик прерывания по сов�
     
       if (event == LONG_PRESS) {
         cube_mode--;
-        cube_mode = (cube_mode < 0) ? 0 : cube_mode;
+        cube_mode = (cube_mode < 0) ? INCREMENT : cube_mode;
       }
       else {
         cube_mode++;
-        cube_mode = (cube_mode > INCREMENT) ? INCREMENT : cube_mode;
+        cube_mode = (cube_mode > INCREMENT) ? 0 : cube_mode;
       }
     }
 
@@ -163,7 +172,10 @@ void loop() {
       PrintKris();
       break;
     case CUBE:
-      PrintCude();
+      PrintCude(0);
+      break;
+    case CUBE_PWM:
+      PrintCude(1);
       break;
     case YLITKA:
       PrintYlitka();
@@ -174,7 +186,7 @@ void loop() {
     case SLICE:
       PrintSlice(0);
       break;
-    case INV_SLICE:
+      case INV_SLICE:
       PrintSlice(1);
       break;
     case VERTIKAL:
@@ -199,7 +211,7 @@ void loop() {
 void ShiftOut( uint8_t value ) {
   for (uint8_t i = 0; i < 8; i++) {
     if (prev_mode != cube_mode) {
-      break;
+      return;
     }
 
     //digitalWrite(data_pin,(value & (0x80 >> i)));  //MSB
@@ -255,8 +267,8 @@ void PrintSlice(uint8_t r) {
 }
  
 void PrintIncrement() {
-  PORTD &= ~B11100000;  // 0
   PORTB |= B00000001;
+  PORTD &= ~B11100000;  // 0
 
   for (uint16_t i = 0; i < 65535; i++) {
     //digitalWrite(latch_pin, LOW); 4 port
@@ -380,9 +392,10 @@ void PrintKris() {
 }
 
 void PrintMass() {
-  uint8_t i, y, z;
+  PORTD &= ~B11100000;
+  PORTB &= ~B00000001;
 
-  for(z = 0; z < 4; z++) {
+  for(uint8_t z = 0; z < 4; z++) {
     if (prev_mode != cube_mode) {
       break;
     }
@@ -391,26 +404,28 @@ void PrintMass() {
     if(z == 1) PORTD |= B10000000; // 1
     if(z == 2) PORTD |= B01000000; // 1
     if(z == 3) PORTD |= B00100000; // 1
-  for(i = 0; i < 4; i++) {
-    if (prev_mode != cube_mode) {
-      break;
-    }
 
-    for(y = 0; y < 4; y++) {
-      //digitalWrite(latch_pin, LOW); 4 port
-      PORTD &= ~B00010000;
-      ShiftOut(mass[i][y] >> 8);
-      ShiftOut(mass[i][y]);
-      //digitalWrite(latch_pin, HIGH);
-      PORTD |= B00010000;
+    for(uint8_t i = 0; i < 4; i++) {
+      for(uint8_t y = 0; y < 4; y++) {
+        //digitalWrite(latch_pin, LOW); 4 port
+        PORTD &= ~B00010000;
+        ShiftOut(mass[i][y] >> 8);
+        ShiftOut(mass[i][y]);
+        //digitalWrite(latch_pin, HIGH);
+        PORTD |= B00010000;
+
+        if (prev_mode != cube_mode) {
+          break;
+        }
+
+        delay(350);
+      }
 
       if (prev_mode != cube_mode) {
         break;
       }
-
-      delay(350);
     }
-  }
+
     PORTD &= ~B11100000;
     PORTB &= ~B00000001;
   }
@@ -426,6 +441,11 @@ void PixelXY(uint8_t x, uint8_t y) {
     ShiftOut( mass[x][y] >> 8 );
     ShiftOut( mass[x][y] );
     //digitalWrite(latch_pin, HIGH);
+
+    if (prev_mode != cube_mode) {
+      return;
+    }
+
     PORTD |= B00010000;
   
     PORTB &= ~B00000001;
@@ -436,81 +456,82 @@ void PrintYlitka() {
   PORTD |= B11100000; //1
   PORTB |= B00000001;
 
-  PixelXY(0,0);
+  for(uint8_t i = 0; i < 4; i++) {
+    PixelXY(0, i);
+
+    if (prev_mode != cube_mode) {
+      break;
+    }
+
+    delay(300);
+  }
+
   if (prev_mode != cube_mode) {
     return;
   }
-  delay(300);
-  PixelXY(0,1);
+
+  for(uint8_t i = 1; i < 4; i++) {
+    PixelXY(i, 3);
+
+    if (prev_mode != cube_mode) {
+      break;
+    }
+
+    delay(300);
+  }
+
   if (prev_mode != cube_mode) {
     return;
-  }  
-  delay(300);
-  PixelXY(0,2);
-  if (prev_mode != cube_mode) {
-    return;
-  }  
-  delay(300);
-  PixelXY(0,3);
-  if (prev_mode != cube_mode) {
-    return;
-  }  
-  delay(300);
-  PixelXY(1,3);
-  if (prev_mode != cube_mode) {
-    return;
-  }  
-  delay(300);
-  PixelXY(2,3);
-  if (prev_mode != cube_mode) {
-    return;
-  }  
-  delay(300);
-  PixelXY(3,3);
-  if (prev_mode != cube_mode) {
-    return;
-  }  
-  delay(300);
+  }
+
   PixelXY(3,2);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(3,1);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(3,0);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(2,0);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(1,0);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(1,1);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(1,2);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+
   PixelXY(2,2);
   if (prev_mode != cube_mode) {
     return;
   }  
   delay(300);
+  
   PixelXY(2,1);
   if (prev_mode != cube_mode) {
     return;
@@ -525,14 +546,51 @@ void clear() {
     PORTD |= B00010000;
 }
 
-void PrintCude () {
+void PrintCude (uint8_t mode) {
   PORTD &= ~B00010000;
   ShiftOut(255);
   ShiftOut(255);
   PORTD |= B00010000;
 
-  PORTB |= B00000001; // 1
-  PORTD |= B11100000; // 1
+  if (mode) {
+    uint16_t _delay;
+    uint8_t spine = 0;
+    int8_t pwm = 3;
+    int8_t max_pwm = 127;
+
+    while (1)       //бесконечная шарманка
+    {
+      if (prev_mode != cube_mode) {
+        break;
+      }
+
+      PORTB |= B00000001; // 1
+      PORTD |= B11100000; // 1
+      delay_nop(pwm);
+      PORTD &= ~B11100000;
+      PORTB &= ~B00000001;
+      delay_nop(max_pwm - pwm);
+
+      _delay++;
+
+      if(_delay > max_pwm * 3) {
+        _delay = 0;
+        spine ? pwm-- : pwm++;
+      }
+
+      if(pwm >= max_pwm) {
+        spine = 1;
+      }
+
+      if(pwm <= 0) {
+        spine = 0;
+      }
+    }
+  }
+  else {
+    PORTB |= B00000001; // 1
+    PORTD |= B11100000; // 1
+  }
 
   if (prev_mode != cube_mode) {
     return;
@@ -540,3 +598,11 @@ void PrintCude () {
 
   delay(300);
 }
+
+void delay_nop(uint16_t i) {
+  while (i > 0)
+  {
+    asm volatile("nop");
+    i--;
+  }
+} 
